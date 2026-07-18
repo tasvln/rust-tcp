@@ -1,5 +1,8 @@
+#[path = "protocol.rs"]
 mod protocol;
+use protocol::ClientMessage;
 
+use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, broadcast};
 use tokio::time::{Duration, interval};
@@ -11,7 +14,7 @@ async fn main() {
     let listener = TcpListener::bind("127.0.0.1:7777").await.unwrap();
     println!("server listening on: 7777");
 
-    let (tx, _rx) = tokio::sync::broadcast::channel::<String>(16);
+    let (tx, _rx) = tokio::sync::broadcast::channel::<ClientMessage>(16);
 
     loop {
         let (mut socket, addr) = listener.accept().await.unwrap();
@@ -27,7 +30,8 @@ async fn main() {
             let mut rx2 = rx;
             tokio::spawn(async move {
                 while let Ok(msg) = rx2.recv().await {
-                    let _ = writer.write_all(msg.as_bytes()).await;
+                    let bytes = bincode::serialize(&msg).unwrap();
+                    let _ = writer.write_all(&bytes).await;
                 }
             });
 
@@ -38,9 +42,9 @@ async fn main() {
                 if n == 0 {
                     break;
                 } // client disconnected
-                let text = String::from_utf8_lossy(&buf[..n]).to_string();
-                println!("received: {text}");
-                let _ = tx.send(text);
+                let msg: ClientMessage = bincode::deserialize(&buf[..n]).unwrap();
+                println!("received: {:?}", msg);
+                let _ = tx.send(msg);
             }
         });
     }
