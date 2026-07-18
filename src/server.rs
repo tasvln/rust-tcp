@@ -1,6 +1,8 @@
 #[path = "protocol.rs"]
 mod protocol;
 use protocol::ClientMessage;
+use protocol::ServerMessage;
+use uuid::Uuid;
 
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
@@ -21,7 +23,13 @@ async fn main() {
         println!("got a connection from {addr}");
 
         let tx = tx.clone(); // this client's own handle to the sender
-        let mut rx = tx.subscribe();
+        let rx = tx.subscribe();
+
+        let player_id = Uuid::new_v4();
+        let welcome = ServerMessage::Welcome { player_id };
+        let bytes = bincode::serialize(&welcome).unwrap();
+        socket.write_all(&bytes).await.unwrap();
+        println!("assigned {player_id} to {addr}");
 
         tokio::spawn(async move {
             let (mut reader, mut writer) = socket.into_split();

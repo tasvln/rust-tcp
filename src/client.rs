@@ -1,6 +1,5 @@
 #[path = "protocol.rs"]
 mod protocol;
-use protocol::ClientMessage;
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
@@ -13,9 +12,17 @@ async fn main() {
 
     let (mut reader, mut writer) = socket.into_split();
 
-    // Task: keep listening for anything the server sends, print it
+    // keep listening for anything the server sends, print it
+    // read Welcome in main() so we can use player_id below
+    let mut buf = [0u8; 1024];
+    let n = reader.read(&mut buf).await.unwrap();
+    let welcome: protocol::ServerMessage = bincode::deserialize(&buf[..n]).unwrap();
+    let protocol::ServerMessage::Welcome { player_id } = welcome;
+
+    println!("got: {:?}", welcome);
     let handle = tokio::spawn(async move {
         let mut buf = [0u8; 1024];
+
         loop {
             let n = reader.read(&mut buf).await.unwrap();
             if n == 0 {
@@ -23,7 +30,7 @@ async fn main() {
                 break;
             }
 
-            let msg: ClientMessage = bincode::deserialize(&buf[..n]).unwrap();
+            let msg: protocol::ClientMessage = bincode::deserialize(&buf[..n]).unwrap();
             println!("got: {:?}", msg);
         }
     });
@@ -35,7 +42,12 @@ async fn main() {
     //     writer.write_all(line.as_bytes()).await.unwrap();
     // }
 
-    let msg = ClientMessage::Move { dx: 1.0, dy: 0.0 };
+    let msg = protocol::ClientMessage::Move {
+        id: player_id,
+        dx: 1.0,
+        dy: 0.0,
+    };
+
     let bytes = bincode::serialize(&msg).unwrap();
     writer.write_all(&bytes).await.unwrap();
 
