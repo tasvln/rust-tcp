@@ -4,6 +4,10 @@ A small multiplayer game server written in Rust, built to learn real-time gaming
 
 Built incrementally from a raw TCP echo server up through a fully framed, authoritative, multi-client game server: connection handling, structured protocol design, authoritative state, state sync vs. event relay, and clean disconnect handling.
 
+<img width="1432" height="806" alt="Screenshot 2026-07-21 at 5 32 42 PM" src="https://github.com/user-attachments/assets/a400e941-9a47-4740-a48a-4eba1b184419" />
+<img width="1440" height="812" alt="Screenshot 2026-07-21 at 5 32 59 PM" src="https://github.com/user-attachments/assets/c3771a3f-ee37-4fc7-aa9f-dd427ddb8419" />
+
+
 ## Architecture
 
 ```
