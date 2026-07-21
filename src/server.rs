@@ -5,7 +5,7 @@ use protocol::PlayerState;
 use protocol::ServerMessage;
 use uuid::Uuid;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use tokio;
@@ -57,7 +57,9 @@ async fn main() {
         let player_id = Uuid::new_v4();
         let welcome = ServerMessage::Welcome { player_id };
         let bytes = bincode::serialize(&welcome).unwrap();
-        socket.write_all(&bytes).await.unwrap();
+        protocol::framing::write_msg(&mut socket, &bytes)
+            .await
+            .unwrap();
         println!("assigned {player_id} to {addr}");
 
         tokio::spawn(async move {
@@ -73,7 +75,12 @@ async fn main() {
                 while let Ok(msg) = rx2.recv().await {
                     let wrapped = ServerMessage::PlayerEvent(msg);
                     let bytes = bincode::serialize(&wrapped).unwrap();
-                    let _ = writer1.lock().await.write_all(&bytes).await.unwrap();
+                    if protocol::framing::write_msg(&mut *writer1.lock().await, &bytes)
+                        .await
+                        .is_err()
+                    {
+                        break; // client's gone, stop trying to write to them
+                    }
                 }
             });
 
@@ -82,37 +89,52 @@ async fn main() {
             tokio::spawn(async move {
                 while let Ok(msg) = state_rx.recv().await {
                     let bytes = bincode::serialize(&msg).unwrap();
-                    let _ = writer2.lock().await.write_all(&bytes).await.unwrap();
+                    if protocol::framing::write_msg(&mut *writer2.lock().await, &bytes)
+                        .await
+                        .is_err()
+                    {
+                        break; // client's gone, stop trying to write to them
+                    }
                 }
             });
 
             // read from this client, broadcast what they send
             loop {
-                let mut buf = [0u8; 1024];
-                let n = reader.read(&mut buf).await.unwrap();
-                if n == 0 {
-                    break;
-                } // client disconnected
-                let msg: ClientMessage = bincode::deserialize(&buf[..n]).unwrap();
+                let bytes = match protocol::framing::read_msg(&mut reader).await {
+                    Ok(b) => b,
+                    Err(_) => break, // connection closed or errored — treat as disconnect
+                };
+                let msg: ClientMessage = bincode::deserialize(&bytes).unwrap();
                 println!("received: {:?}", msg);
 
                 match &msg {
-                    ClientMessage::Move { dx, dy } => {
+                    ClientMessage::Move { id, dx, dy } => {
                         let mut s = state.lock().await;
-                        let player_id_for_state = player_id.clone();
-                        let player = s.entry(player_id).or_insert(PlayerState {
-                            id: player_id_for_state,
+                        let player = s.entry(*id).or_insert(PlayerState {
+                            id: *id,
                             x: 0.0,
                             y: 0.0,
+                            completed_tasks: HashSet::new(),
                         });
                         player.x += *dx;
                         player.y += *dy;
                     }
                     ClientMessage::Chat { .. } => {}
+                    ClientMessage::CompleteTask { id, task_id } => {
+                        let mut s = state.lock().await;
+                        if let Some(player) = s.get_mut(id) {
+                            player.completed_tasks.insert(*task_id);
+                        }
+                    }
                 }
 
                 let _ = tx.send(msg);
             }
+
+            // loop has ended — client disconnected
+            state.lock().await.remove(&player_id);
+            let _ = state_tx.send(ServerMessage::PlayerLeft { player_id });
+            println!("{player_id} disconnected")
         });
     }
 }
