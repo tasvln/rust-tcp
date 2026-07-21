@@ -1,6 +1,6 @@
 # Among Us TCP Server
 
-A small authoritative multiplayer game server written in Rust, built to learn real-time networking fundamentals — the kind of client/server architecture used under the hood in social deduction games like Among Us.
+A small multiplayer game server written in Rust, built to learn real-time gaming networking — the kind of client/server architecture used under the hood in social deduction games like Among Us.
 
 Built incrementally from a raw TCP echo server up through a fully framed, authoritative, multi-client game server: connection handling, structured protocol design, authoritative state, state sync vs. event relay, and clean disconnect handling.
 
@@ -23,6 +23,7 @@ Clients never declare what happened — they send *intent* (`ClientMessage`), an
 ### Two sync strategies, used deliberately for different data
 
 - **Event relay** (`tx` / `ClientMessage`, wrapped and rebroadcast as `ServerMessage::PlayerEvent`) — every individual message is relayed as it happens. Used for things where losing an individual message matters (e.g. chat).
+
 - **State sync** (`state_tx` / `ServerMessage::StateUpdate`) — the server broadcasts a full snapshot of all player state on a fixed 500ms tick, independent of what triggered any particular change. Used for position/task data, where only the *current* value matters, not the history of how it got there. This is what allows a client that joins late to immediately see accurate state for every player, rather than only learning about moves that happen after they connect.
 
 ### Message framing
